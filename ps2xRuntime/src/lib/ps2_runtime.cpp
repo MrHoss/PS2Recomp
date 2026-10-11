@@ -20,6 +20,7 @@
 #include <algorithm>
 #include <array>
 #include <cstring>
+#include <cstdlib>
 #include <limits>
 #include <chrono>
 #include <atomic>
@@ -371,6 +372,16 @@ namespace
         }
         return out;
     }
+}
+
+static bool renderTriangleTestEnabled()
+{
+    static const bool s_triangleTestEnabled = []()
+    {
+        const char *value = std::getenv("PS2X_RENDER_TRIANGLE");
+        return value != nullptr && value[0] != '\0' && value[0] != '0';
+    }();
+    return s_triangleTestEnabled;
 }
 
 static void UploadFrame(Texture2D &tex, PS2Runtime *rt, uint32_t &outWidth, uint32_t &outHeight)
@@ -2425,7 +2436,8 @@ void PS2Runtime::run()
         UploadFrame(frameTex, this, presentWidth, presentHeight);
 
         BeginDrawing();
-        ClearBackground(BLACK);
+        const bool triangleTest = renderTriangleTestEnabled();
+        ClearBackground(triangleTest ? MAGENTA : BLACK);
         const float srcWidth = static_cast<float>(std::max<uint32_t>(1u, presentWidth));
         const float srcHeight = static_cast<float>(std::max<uint32_t>(1u, presentHeight));
         const float screenWidth = static_cast<float>(GetScreenWidth());
@@ -2440,11 +2452,28 @@ void PS2Runtime::run()
             dstWidth,
             dstHeight};
         DrawTexturePro(frameTex, srcRect, dstRect, Vector2{0.0f, 0.0f}, 0.0f, WHITE);
+        if (triangleTest)
+        {
+            DrawTriangle(Vector2{screenWidth * 0.5f, screenHeight * 0.18f},
+                         Vector2{screenWidth * 0.14f, screenHeight * 0.82f},
+                         Vector2{screenWidth * 0.86f, screenHeight * 0.82f},
+                         WHITE);
+        }
         if (m_debugUiInitialized && m_debugUiDrawCallback)
         {
             m_debugUiDrawCallback(*this, m_debugUiUserData);
         }
         EndDrawing();
+
+        if (triangleTest)
+        {
+            static bool s_takeScreenshot = true;
+            if (s_takeScreenshot)
+            {
+                s_takeScreenshot = false;
+                TakeScreenshot("triangle_test.png");
+            }
+        }
 
         if (WindowShouldClose())
         {

@@ -978,6 +978,47 @@ public class ExportPS2Functions extends GhidraScript {
         Collections.sort(boundaries);
 
         functionRecords.sort(Comparator.comparingLong(r -> r.start));
+
+        // Ghidra function bodies may contain non-contiguous ranges (mirrored
+        // garbage), so getMaxAddress() can overshoot the real end by megabytes.
+        // Clamp to the next function entry. Additionally, when a function's real
+        // end falls through into bytes Ghidra could not disassemble (e.g. the
+        // PS2-only MTSAB/MTSAH), bridge the gap up to the next entry so the
+        // recompiler (which decodes from the ELF) still emits that code.
+        for (int i = 0; i < functionRecords.size(); i++) {
+            FunctionRecord record = functionRecords.get(i);
+            long ghidraEnd = record.endExclusive;
+            long nextStart = (i + 1 < functionRecords.size()) ? functionRecords.get(i + 1).start : 0L;
+
+            long endExclusive = ghidraEnd;
+            if (nextStart > record.start && nextStart < endExclusive) {
+                endExclusive = nextStart;
+            }
+
+            if (nextStart > endExclusive) {
+                Address lastAddress = addressFromOffset(endExclusive - 4L);
+                Address gapAddress = addressFromOffset(endExclusive);
+                Instruction lastInstruction = lastAddress == null ? null
+                        : currentProgram.getListing().getInstructionAt(lastAddress);
+                boolean fallsThrough = lastInstruction != null
+                        && lastInstruction.getLength() == MIPS_INSTRUCTION_SIZE
+                        && lastInstruction.getFlowType().isFallthrough();
+                boolean gapUndefined = gapAddress != null
+                        && currentProgram.getListing().getInstructionAt(gapAddress) == null;
+
+                if (fallsThrough && gapUndefined) {
+                    endExclusive = nextStart;
+                }
+            }
+
+            if (endExclusive <= record.start) {
+                endExclusive = record.start + 4L;
+            }
+
+            record.endExclusive = endExclusive;
+            record.size = endExclusive - record.start;
+        }
+
         for (FunctionRecord record : labelRecords) {
             long endExclusive = 0L;
 
@@ -1017,14 +1058,22 @@ public class ExportPS2Functions extends GhidraScript {
 
     @Override
     public void run() throws Exception {
-        File tomlFile = askFile("Choose output TOML config file", "Save");
-        if (tomlFile == null) {
-            return;
-        }
+        File tomlFile;
+        File csvFile;
+        String[] args = getScriptArgs();
+        if (args.length >= 2) {
+            tomlFile = new File(args[0]);
+            csvFile = new File(args[1]);
+        } else {
+            tomlFile = askFile("Choose output TOML config file", "Save");
+            if (tomlFile == null) {
+                return;
+            }
 
-        File csvFile = askFile("Choose output CSV file", "Save");
-        if (csvFile == null) {
-            return;
+            csvFile = askFile("Choose output CSV file", "Save");
+            if (csvFile == null) {
+                return;
+            }
         }
 
         FunctionManager fm = currentProgram.getFunctionManager();

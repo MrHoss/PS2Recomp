@@ -466,15 +466,21 @@ uint32_t PS2Memory::advanceEeTimers(uint64_t eeCycles) noexcept
             timer.count = static_cast<uint32_t>((oldCount + ticks) & 0xFFFFu);
         }
 
-        if (compareReached && (timer.mode & kEeTimerModeCmpe) != 0u && (timer.mode & kEeTimerModeEquf) == 0u)
+        if (compareReached && (timer.mode & kEeTimerModeEquf) == 0u)
         {
             timer.mode |= kEeTimerModeEquf;
-            interruptMask |= 1u << index;
+            if ((timer.mode & kEeTimerModeCmpe) != 0u)
+            {
+                interruptMask |= 1u << index;
+            }
         }
-        if (overflowReached && (timer.mode & kEeTimerModeOvfe) != 0u && (timer.mode & kEeTimerModeOvff) == 0u)
+        if (overflowReached && (timer.mode & kEeTimerModeOvff) == 0u)
         {
             timer.mode |= kEeTimerModeOvff;
-            interruptMask |= 1u << index;
+            if ((timer.mode & kEeTimerModeOvfe) != 0u)
+            {
+                interruptMask |= 1u << index;
+            }
         }
     }
     return interruptMask;

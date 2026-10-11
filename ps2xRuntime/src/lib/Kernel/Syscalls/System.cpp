@@ -405,8 +405,23 @@ namespace ps2_syscalls
 
         if (!runtime->hasFunction(handler))
         {
-            setReturnS32(ctx, KE_ERROR);
-            return true;
+            // The game installed a syscall handler at an address the recompiler
+            // did not materialize as a callable function (for example a leaf
+            // routine without a standard prologue, or a mid-function entry
+            // point). We cannot execute it, so fall back to the builtin kernel
+            // implementation by reporting "not handled" instead of surfacing an
+            // error. Returning KE_ERROR here previously stalled self-locating
+            // init loops (e.g. FindAddress) forever.
+            static std::atomic<uint32_t> s_overrideFallbackLogs{0u};
+            const uint32_t logIndex = s_overrideFallbackLogs.fetch_add(1u, std::memory_order_relaxed);
+            if (logIndex < 32u)
+            {
+                std::cerr << "[syscall-override] handler not recompiled: syscall=0x"
+                          << std::hex << syscallNumber
+                          << " handler=0x" << handler << std::dec
+                          << " -> using builtin" << std::endl;
+            }
+            return false;
         }
 
         GuestInvocation invocation{};

@@ -41,6 +41,18 @@ if((CMAKE_C_COMPILER MATCHES "arm-vita-eabi") OR
     set(PS2X_IS_ARM_TARGET ON)
 endif()
 
+if(NOT PS2X_IS_ARM_TARGET AND (CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64|i686|x86"))
+    include(CheckCXXCompilerFlag)
+    check_cxx_compiler_flag("-msse4.1" COMPILER_SUPPORTS_SSE41)
+    check_cxx_compiler_flag("-mavx" COMPILER_SUPPORTS_AVX)
+    if(COMPILER_SUPPORTS_SSE41)
+        add_compile_options(-msse4.1)
+    endif()
+    if(COMPILER_SUPPORTS_AVX)
+        add_compile_options(-mavx)
+    endif()
+endif()
+
 if(PS2X_IS_ARM_TARGET)
     message(STATUS "ARM target detected, fetching sse2neon")
 
